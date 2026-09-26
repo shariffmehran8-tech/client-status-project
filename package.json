@@ -1,0 +1,14 @@
+{
+  "name": "client-health-score",
+  "version": "1.0.0",
+  "description": "Standalone client relationship health score dashboard",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "seed": "node generate-seed.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "cors": "^2.8.5"
+  }
+}

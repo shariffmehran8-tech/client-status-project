@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Vitals — Client Health</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.23.5/babel.min.js"></script>
+<style>
+  :root {
+    --navy-950: #0a0e1a;
+    --navy-900: #0f1524;
+    --navy-800: #161d30;
+    --navy-700: #212a42;
+    --amber: #d4a24e;
+    --amber-bright: #e8bc6f;
+    --ink-muted: #8890a6;
+    --ink: #e7e9ef;
+    --healthy: #6fb98f;
+    --steady: #d4a24e;
+    --at-risk: #d98a4f;
+    --critical: #c25c5c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: radial-gradient(ellipse at top, #101830 0%, var(--navy-950) 60%);
+    color: var(--ink);
+    font-family: 'Inter', sans-serif;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 48px 28px 80px; }
+  header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 40px; flex-wrap: wrap; gap: 16px; }
+  h1 {
+    font-family: 'Fraunces', serif;
+    font-weight: 500;
+    font-size: 2.4rem;
+    margin: 0;
+    letter-spacing: -0.01em;
+  }
+  .amber-word { color: var(--amber-bright); }
+  .subtitle { color: var(--ink-muted); font-size: 0.95rem; margin-top: 6px; max-width: 480px; }
+  .eyebrow {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+  }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 18px; }
+  .card {
+    background: linear-gradient(165deg, var(--navy-800), var(--navy-900));
+    border: 1px solid var(--navy-700);
+    border-radius: 14px;
+    padding: 22px 24px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.2s ease;
+  }
+  .card:hover { border-color: #34405e; }
+  .card-top { display: flex; justify-content: space-between; align-items: flex-start; }
+  .client-name { font-family: 'Fraunces', serif; font-size: 1.25rem; font-weight: 500; }
+  .client-since { font-family: 'IBM Plex Mono', monospace; font-size: 0.72rem; color: var(--ink-muted); margin-top: 3px; }
+  .score-badge {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 1.7rem;
+    font-weight: 500;
+    line-height: 1;
+    text-align: right;
+  }
+  .status-pill {
+    display: inline-block;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    border-radius: 20px;
+    margin-top: 6px;
+  }
+  .pulse-wrap { margin: 18px 0 14px; height: 54px; }
+  .sub-row { display: flex; justify-content: space-between; margin-top: 14px; gap: 8px; }
+  .sub-item { flex: 1; text-align: center; }
+  .sub-label { font-family: 'IBM Plex Mono', monospace; font-size: 0.62rem; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  .sub-val { font-size: 0.98rem; margin-top: 3px; font-weight: 600; }
+  .alerts { margin-top: 16px; border-top: 1px solid var(--navy-700); padding-top: 12px; }
+  .alert-row { font-size: 0.8rem; color: #cbb98a; display: flex; gap: 7px; margin-top: 6px; line-height: 1.4; }
+  .alert-row.critical { color: #dd9494; }
+  .alert-dot { flex-shrink: 0; margin-top: 6px; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+  .empty-alerts { font-size: 0.8rem; color: var(--ink-muted); margin-top: 12px; }
+  .footer-note { margin-top: 50px; color: var(--ink-muted); font-size: 0.8rem; text-align: center; font-family: 'IBM Plex Mono', monospace; }
+  .loading { text-align: center; padding: 100px 0; color: var(--ink-muted); font-family: 'IBM Plex Mono', monospace; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useMemo } = React;
+
+const API = "http://localhost:4020/api";
+
+const STATUS_COLOR = {
+  healthy: "var(--healthy)",
+  steady: "var(--steady)",
+  "at-risk": "var(--at-risk)",
+  critical: "var(--critical)",
+  "insufficient-data": "var(--ink-muted)",
+};
+
+const STATUS_LABEL = {
+  healthy: "Healthy",
+  steady: "Steady",
+  "at-risk": "At risk",
+  critical: "Critical",
+  "insufficient-data": "New — gathering signal",
+};
+
+function PulseLine({ trajectory, color }) {
+  const w = 300, h = 54, pad = 6;
+  const points = trajectory.filter(p => p.score !== null);
+  if (points.length < 2) {
+    return (
+      <svg viewBox={`0 0 ${w} ${h}`} width="100%" height={h} preserveAspectRatio="none">
+        <line x1={pad} y1={h/2} x2={w-pad} y2={h/2} stroke="#2a3350" strokeWidth="1.5" strokeDasharray="3 4" />
+      </svg>
+    );
+  }
+  const scores = points.map(p => p.score);
+  const min = Math.min(...scores, 30);
+  const max = Math.max(...scores, 90);
+  const range = Math.max(max - min, 1);
+  const stepX = (w - pad * 2) / (points.length - 1);
+  const coords = points.map((p, i) => {
+    const x = pad + i * stepX;
+    const y = h - pad - ((p.score - min) / range) * (h - pad * 2);
+    return [x, y];
+  });
+  const path = coords.map(([x, y], i) => (i === 0 ? `M ${x} ${y}` : `L ${x} ${y}`)).join(" ");
+  const [lastX, lastY] = coords[coords.length - 1];
+
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} width="100%" height={h} preserveAspectRatio="none">
+      <path d={path} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" opacity="0.9" />
+      <circle cx={lastX} cy={lastY} r="3.5" fill={color} />
+      <circle cx={lastX} cy={lastY} r="7" fill={color} opacity="0.25">
+        <animate attributeName="r" values="6;11;6" dur="2.4s" repeatCount="indefinite" />
+        <animate attributeName="opacity" values="0.3;0;0.3" dur="2.4s" repeatCount="indefinite" />
+      </circle>
+    </svg>
+  );
+}
+
+function ClientCard({ client }) {
+  const color = STATUS_COLOR[client.status];
+  const sub = client.subScores;
+
+  const fmt = (s) => s.score === null ? "—" : `${s.score}`;
+
+  return (
+    <div className="card">
+      <div className="card-top">
+        <div>
+          <div className="client-name">{client.name}</div>
+          <div className="client-since">Client since {client.since}</div>
+        </div>
+        <div>
+          <div className="score-badge" style={{ color }}>{client.score === null ? "—" : client.score}</div>
+          <div className="status-pill" style={{ color, background: color + "22" }}>{STATUS_LABEL[client.status]}</div>
+        </div>
+      </div>
+
+      <div className="pulse-wrap">
+        <PulseLine trajectory={client.trajectory} color={color} />
+      </div>
+
+      <div className="sub-row">
+        <div className="sub-item">
+          <div className="sub-label">Payment</div>
+          <div className="sub-val">{fmt(sub.payment)}</div>
+        </div>
+        <div className="sub-item">
+          <div className="sub-label">Response</div>
+          <div className="sub-val">{fmt(sub.responsiveness)}</div>
+        </div>
+        <div className="sub-item">
+          <div className="sub-label">Scope</div>
+          <div className="sub-val">{fmt(sub.scopeStability)}</div>
+        </div>
+        <div className="sub-item">
+          <div className="sub-label">Sentiment</div>
+          <div className="sub-val">{fmt(sub.sentiment)}</div>
+        </div>
+      </div>
+
+      <div className="alerts">
+        {client.alerts.length === 0 ? (
+          <div className="empty-alerts">No active flags.</div>
+        ) : (
+          client.alerts.map((a, i) => (
+            <div className={"alert-row" + (a.level === "critical" ? " critical" : "")} key={i}>
+              <span className="alert-dot"></span>
+              <span>{a.message}</span>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [clients, setClients] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    fetch(`${API}/clients`)
+      .then(r => r.json())
+      .then(setClients)
+      .catch(e => setError(String(e)));
+  }, []);
+
+  const sorted = useMemo(() => {
+    if (!clients) return [];
+    const rank = { critical: 0, "at-risk": 1, "insufficient-data": 2, steady: 3, healthy: 4 };
+    return [...clients].sort((a, b) => (rank[a.status] ?? 5) - (rank[b.status] ?? 5));
+  }, [clients]);
+
+  return (
+    <div className="wrap">
+      <header>
+        <div>
+          <div className="eyebrow">Relationship diagnostics</div>
+          <h1>Client <span className="amber-word">Vitals</span></h1>
+          <div className="subtitle">One composite signal per client, drawn from payment timeliness, response speed, scope stability, and sentiment.</div>
+        </div>
+      </header>
+
+      {error && <div className="loading">Couldn't reach the API at {API}. Is the server running?</div>}
+      {!error && !clients && <div className="loading">Reading signals…</div>}
+
+      {clients && (
+        <div className="grid">
+          {sorted.map(c => <ClientCard key={c.id} client={c} />)}
+        </div>
+      )}
+
+      <div className="footer-note">payment · responsiveness · scope stability · sentiment — weighted 30 / 20 / 20 / 30</div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
